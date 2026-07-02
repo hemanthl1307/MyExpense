@@ -7,7 +7,7 @@
     --accent-soft:#e4efe7;
     --red:#a4443a;
     --muted:#726b5c;
-    --font-display:'Georgia', 'Times New Roman', serif;
+    --font-display: 'Times New Roman', serif;
     --font-mono:'Courier New', Courier, monospace;
     --font-body:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   }
@@ -299,6 +299,62 @@
     padding:40px 0;
     border:1px dashed var(--line);
     border-radius:8px;
+  }
+
+  .download-card{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:16px;
+    background:var(--accent-soft);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:18px 20px;
+    margin-top:24px;
+  }
+
+  .download-text h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    color:var(--ink);
+    margin:0 0 4px;
+    font-weight:600;
+  }
+
+  .download-text p{
+    font-size:13px;
+    color:var(--muted);
+    margin:0;
+    max-width:420px;
+  }
+
+  .btn-download{
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:11px 20px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background .15s ease;
+  }
+
+  .btn-download:hover{ background:#255c41; }
+
+  .btn-download:disabled{
+    background:var(--muted);
+    cursor:not-allowed;
+  }
+
+  @media (max-width:560px){
+    .download-card{
+      flex-direction:column;
+      align-items:flex-start;
+    }
+    .btn-download{ width:100%; }
   }
 
   footer{
