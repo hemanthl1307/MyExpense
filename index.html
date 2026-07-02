@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyExpense — Expense Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>MyExpense</h1>
+      <div class="tagline">Daily expense tracker</div>
+    </div>
+    <div class="month-label" id="monthLabel"></div>
+  </header>
+
+  <div class="summary">
+    <div class="summary-card">
+      <div class="label">Today</div>
+      <div class="value" id="todayTotal">₹0</div>
+    </div>
+    <div class="summary-card total">
+      <div class="label">This Month</div>
+      <div class="value" id="monthTotal">₹0</div>
+    </div>
+  </div>
+
+  <div class="add-form">
+    <h2>Add an expense</h2>
+    <div class="form-row">
+      <input type="text" id="catInput" placeholder="What did you spend on?" autocomplete="off">
+      <input type="number" id="amtInput" placeholder="Amount (₹)" min="0" step="0.01">
+      <input type="date" id="dateInput">
+      <button class="btn-add" id="addBtn">Add</button>
+    </div>
+    <div class="error-msg" id="errorMsg">Please enter both a description and an amount.</div>
+  </div>
+
+  <div class="chart-card">
+    <h2>Monthly spending</h2>
+    <div id="chartWrap">
+      <canvas id="expenseChart" height="90"></canvas>
+    </div>
+    <div class="chart-empty" id="chartEmpty" style="display:none;">No expenses logged yet this month.</div>
+  </div>
+
+  <div class="log">
+    <h2>Daily log</h2>
+    <div id="logContainer"></div>
+  </div>
+
+  <footer>Stored locally in this browser — no data leaves your device.</footer>
+
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'ledger_expenses_v1';
+
+  let expenses = loadExpenses();
+
+  const catInput = document.getElementById('catInput');
+  const amtInput = document.getElementById('amtInput');
+  const dateInput = document.getElementById('dateInput');
+  const addBtn = document.getElementById('addBtn');
+  const errorMsg = document.getElementById('errorMsg');
+  const logContainer = document.getElementById('logContainer');
+  const monthTotalEl = document.getElementById('monthTotal');
+  const todayTotalEl = document.getElementById('todayTotal');
+  const monthLabelEl = document.getElementById('monthLabel');
+
+  let chart = null;
+
+  // Default date input to today
+  dateInput.value = todayISO();
+
+  addBtn.addEventListener('click', addExpense);
+  amtInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') addExpense(); });
+  catInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') addExpense(); });
+
+  function addExpense(){
+    const cat = catInput.value.trim();
+    const amt = parseFloat(amtInput.value);
+    const date = dateInput.value || todayISO();
+
+    if(!cat || isNaN(amt) || amt <= 0){
+      errorMsg.style.display = 'block';
+      return;
+    }
+    errorMsg.style.display = 'none';
+
+    expenses.push({
+      id: Date.now() + Math.random().toString(16).slice(2),
+      category: cat,
+      amount: amt,
+      date: date
+    });
+
+    saveExpenses();
+    catInput.value = '';
+    amtInput.value = '';
+    catInput.focus();
+
+    render();
+  }
+
+  function deleteExpense(id){
+    expenses = expenses.filter(e => e.id !== id);
+    saveExpenses();
+    render();
+  }
+
+  function loadExpenses(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){
+      return [];
+    }
+  }
+
+  function saveExpenses(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+  }
+
+  function todayISO(){
+    const d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  }
+
+  function pad(n){ return n.toString().padStart(2,'0'); }
+
+  function formatMoney(n){
+    return '₹' + n.toLocaleString('en-IN', {maximumFractionDigits: 2});
+  }
+
+  function formatDateHuman(iso){
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short' });
+  }
+
+  function currentMonthKey(){
+    const d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth()+1);
+  }
+
+  function render(){
+    const monthKey = currentMonthKey();
+    const now = new Date();
+    monthLabelEl.textContent = now.toLocaleDateString('en-IN', { month:'long', year:'numeric' });
+
+    const monthExpenses = expenses.filter(e => e.date.startsWith(monthKey));
+    const monthTotal = monthExpenses.reduce((s,e)=>s+e.amount, 0);
+    monthTotalEl.textContent = formatMoney(monthTotal);
+
+    const today = todayISO();
+    const todayTotal = expenses.filter(e=>e.date===today).reduce((s,e)=>s+e.amount,0);
+    todayTotalEl.textContent = formatMoney(todayTotal);
+
+    renderLog(monthExpenses);
+    renderChart(monthExpenses, monthKey);
+  }
+
+  function renderLog(monthExpenses){
+    if(monthExpenses.length === 0){
+      logContainer.innerHTML = '<div class="empty-state">No expenses added yet. Start by adding one above.</div>';
+      return;
+    }
+
+    // group by date, descending
+    const groups = {};
+    monthExpenses.forEach(e=>{
+      if(!groups[e.date]) groups[e.date] = [];
+      groups[e.date].push(e);
+    });
+
+    const dates = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+
+    logContainer.innerHTML = dates.map(date=>{
+      const items = groups[date].sort((a,b)=> b.id.localeCompare ? 0 : 0);
+      const dayTotal = items.reduce((s,e)=>s+e.amount,0);
+      const rows = items.map(e=>`
+        <div class="entry">
+          <div class="cat"><span class="dot"></span>${escapeHtml(e.category)}</div>
+          <div class="amt-del">
+            <span class="amt">${formatMoney(e.amount)}</span>
+            <button class="del-btn" data-id="${e.id}" title="Delete">✕</button>
+          </div>
+        </div>
+      `).join('');
+
+      return `
+        <div class="day-group">
+          <div class="day-header">
+            <span class="date">${formatDateHuman(date)}</span>
+            <span class="day-total">${formatMoney(dayTotal)}</span>
+          </div>
+          ${rows}
+        </div>
+      `;
+    }).join('');
+
+    logContainer.querySelectorAll('.del-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> deleteExpense(btn.dataset.id));
+    });
+  }
+
+  function renderChart(monthExpenses, monthKey){
+    const chartEmpty = document.getElementById('chartEmpty');
+    const canvas = document.getElementById('expenseChart');
+
+    if(monthExpenses.length === 0){
+      canvas.style.display = 'none';
+      chartEmpty.style.display = 'block';
+      if(chart){ chart.destroy(); chart = null; }
+      return;
+    }
+    canvas.style.display = 'block';
+    chartEmpty.style.display = 'none';
+
+    // Build day-by-day totals for the month
+    const [year, month] = monthKey.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totals = new Array(daysInMonth).fill(0);
+
+    monthExpenses.forEach(e=>{
+      const day = parseInt(e.date.split('-')[2], 10);
+      totals[day-1] += e.amount;
+    });
+
+    const labels = totals.map((_,i)=> (i+1).toString());
+
+    if(chart) chart.destroy();
+
+    const ctx = canvas.getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Spent',
+          data: totals,
+          backgroundColor: '#2f6f4f',
+          borderRadius: 3,
+          maxBarThickness: 22
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx)=> ' ' + formatMoney(ctx.parsed.y)
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display:false },
+            ticks: { font: { size: 10 }, color: '#726b5c' }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color:'#eeebe1' },
+            ticks: {
+              font: { size: 10 },
+              color: '#726b5c',
+              callback: (v)=> '₹' + v
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  render();
+})();
+</script>
+
+</body>
+</html>
